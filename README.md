@@ -6,3 +6,10 @@ tooth_xray
 > 2.result picture in ./Rotate/result 
 >
 > 3.jupyter notebook in ./Rotate/rotate.ipynb
+
+## model folder 
+>
+>
+>
+>
+>
