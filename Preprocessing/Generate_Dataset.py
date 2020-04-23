@@ -55,57 +55,6 @@ def combination(points):
                 i = i + 1
 
 
-
-# def get_rotate_degree(image, points):
-#         #print('points',points)
-#         all_disance = { key: distance.euclidean( points[key[0]], points[key[1]] ) for key in combination(points) }
-#         #print('all_disance',all_disance)
-#         all_disance = { k: v for k, v in sorted(all_disance.items(), key=lambda item: item[1]) }
-        
-#         third_edge, fourth_edge = None, None
-#         #print('all_disance',all_disance)
-#         #print(type(all_disance))
-#         #print('all_disance.items()',all_disance.items())
-#         #print(type(all_disance.items()))
-#         for idx, item in enumerate(all_disance.items()):  
-#             key, value = item 
-#             if idx == 2:
-#                 third_edge = key
-#                 #print(third_edge)
-#             if idx == 3:
-#                 fourth_edge = key
-#                 #print(fourth_edge)
-        
-#         left_line, right_line = None, None
-#         if points[third_edge[0]][0] < points[fourth_edge[0]][0] :
-#                 left_line, right_line  = third_edge, fourth_edge
-#         else:
-#                 right_line , left_line = third_edge, fourth_edge
-
-#         left_line =  [ points[ left_line [0] ], points[ left_line [1] ] ]
-#         right_line = [ points[ right_line[0] ], points[ right_line[1] ] ]
-
-#         left_line , left_direction = recognize_line(left_line)
-#         #print('left_line , left_direction ',left_line,left_direction)###
-#         left_line_angle = get_line_angle(left_line, left_direction)
-
-#         right_line, right_direction = recognize_line(right_line)
-#         right_line_angle = get_line_angle(right_line, right_direction)
-
-#         rotate_angle = (abs(left_line_angle) + abs(right_line_angle)) / 2
-        
-# #         clock = lambda x: "clockwise" if x == True else "counterclockwise"
-# #         print("left_angle: %d , %s" % (left_line_angle , clock(left_direction)) )
-# #         print("right_angle %d , %s" % (right_line_angle, clock(right_direction)))
-        
-#         if left_line_angle < 0 and right_line_angle < 0 :
-#                 return -rotate_angle
-#         elif left_line_angle * right_line_angle < 0:
-#                 return 0
-#         else:
-#                 return rotate_angle
-
-
 def get_rotate_degree(image, points):
         points = sorted(points ,key=lambda point:point[1])
         up_center_point   = [(points[0][0]+points[1][0])/2,(points[0][1]+points[1][1])/2]
@@ -172,20 +121,51 @@ def trim_border(image):
                 return trim_border(image[:,:-2])    
         return image
 
-def auto_rotate_image(image, points):
+def get_quarter_points(points, direction=True):
+        points = sorted(points ,key=lambda point:point[1])        
+        up_lines   = sorted([points[0], points[1]] , key=lambda point:point[0])
+        down_lines = sorted([points[2], points[3]] ,key=lambda point:point[0])
+
+        left_coff, right_coff = 0, 0
+        # 3/4 right
+        if direction == True: 
+                left_coff, right_coff = 0.75, 0.25
+        # 3/4 left
+        else: 
+                left_coff, right_coff = 0.25, 0.75
+
+        weighted = lambda x, y : int(x * left_coff + y * right_coff)
+
+        up_quarter_point   = [ weighted(up_lines[0][0]  , up_lines[1][0]  ), weighted(up_lines[0][1]  , up_lines[1][1])   ]
+        down_quarter_point = [ weighted(down_lines[0][0], down_lines[1][0]), weighted(down_lines[0][1], down_lines[1][1]) ]
+        
+        # drawcountor points should be ordered
+        if direction == True:
+                points = np.array([up_quarter_point, down_quarter_point,  down_lines[1], up_lines[1]])
+        else:
+                points = np.array([down_lines[0], up_lines[0], up_quarter_point, down_quarter_point])
+        return points
+
+
+
+def auto_rotate_image(image, points, quarter=False, near_right=True):
         
         rotate_angle = get_rotate_degree(image, points)
+        
+        if quarter == True:
+                points = get_quarter_points(points, near_right)
+        
         regular_point = points - points.min(axis=0)
         
         rect = cv2.boundingRect(points)
         x, y, w, h = rect
         croped = image[y:y+h, x:x+w].copy() 
-        ro_crop = rotate(croped, rotate_angle)
         
         mask = np.zeros(croped.shape, np.uint8)
         cv2.drawContours(mask, [regular_point], -1, (255, 255, 255), -1, cv2.LINE_AA)
-        mask = rotate(mask, rotate_angle)
-        dst = cv2.bitwise_and(ro_crop, ro_crop, mask=mask)
+        
+        dst = cv2.bitwise_and(croped, croped, mask=mask)
+        dst = rotate(dst, rotate_angle)
         dst = trim_border(dst)
 
         return dst
@@ -208,18 +188,38 @@ def get_table_file(patient_id):
                         pd_json   = json.load(open(table_name, "r"))
                         pd_table = pd_dict_2_pd_dataframe(pd_json)
                         return pd_table
-        
+
+def init_directory(directory): 
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
+def padding(image, padding_height = 700, padding_width = 400):
+        mask_size = (padding_height, padding_width)
+        tooth_h, tooth_w = image.shape
+        mask = np.zeros(mask_size)
+        yoff = round((mask_size[0]-tooth_h)/2)
+        xoff = round((mask_size[1]-tooth_w)/2)
+        result = mask.copy()
+        result[yoff:yoff+tooth_h, xoff:xoff+tooth_w] = image
+        return result
+
+
 if __name__ == "__main__":
-         
+        
         jsons = [ i for i in glob.iglob("Label/*/*/*.json")]
         images = [ i.replace("json", "png") for i in jsons]
         
         mapping_dict = {}
-        no_table = set()
+        no_table, no_side = set(), set()
+        padding_size = (700, 700)
+        output_dir = "Dataset/Images_quarter_L"
+        init_directory(output_dir)
+
         for data, image in zip(jsons, images):
                 tooth_img  = cv2.imread(image, 0)
                 tooth_data = json.load(open(data, "r"))["shapes"]
                 patient_id = image.split("\\")[1]
+                
                 pd_table   = get_table_file(patient_id)
                 
                 if pd_table is None:
@@ -227,18 +227,35 @@ if __name__ == "__main__":
                         continue
 
                 for tooth in tooth_data:
-                        pd_pair = get_PD_pair(pd_table, tooth["label"])
+                        pd_pair  = get_PD_pair(pd_table, tooth["label"])
                         points   = np.array(tooth["points"]).astype(int)
-                        ro_tooth = auto_rotate_image(tooth_img, points)
-                        filename = 'Dataset/Images/%s_%s' % (image.split("\\")[2], tooth["label"])                       
-                        filename = append_redunt_name(filename)
-                        cv2.imwrite(filename, ro_tooth)
+                        ro_tooth = auto_rotate_image(tooth_img, points, quarter=True ,near_right=False)
                         
-                        mapping_dict[filename] = pd_pair
-                
-        json.dump(mapping_dict, open("Dataset/mapping.json", 'w'), indent=4)
+                        tooth_h, tooth_w = ro_tooth.shape
+                        if tooth_h > padding_size[0] or tooth_w > padding_size[1]:
+                                continue
+                        
+                        if pd_pair == None:
+                                no_side.add(data)
+                                continue
+
+                        ro_tooth = padding(ro_tooth, padding_size[0], padding_size[1])
+                        filename = '%s/%s_%s' % (output_dir, image.split("\\")[2], tooth["label"])                       
+                        filename = append_redunt_name(filename)
+
+                        ro_tooth = cv2.flip(ro_tooth, 1)
+                        cv2.imwrite(filename, ro_tooth)
+                        mapping_dict[filename] = pd_pair[0]
+                        
+                            
+        json.dump(mapping_dict, open("%s/mapping.json" % output_dir, 'w'), indent=4)
         
-        with open("Dataset/loss_table", "w") as f:
+        with open("%s/loss_table" % output_dir, "w") as f:
                 no_table = list(no_table)
                 no_table = "\n".join(no_table)
                 f.write(no_table)
+        
+        with open("%s/loss_side" % output_dir, "w") as f:
+                no_side = list(no_side)
+                no_side = "\n".join(no_side)
+                f.write(no_side)
