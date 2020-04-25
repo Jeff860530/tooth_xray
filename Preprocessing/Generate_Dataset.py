@@ -1,5 +1,6 @@
 
 from scipy.spatial import distance
+from datetime import datetime
 from math import cos, sin
 from tqdm import tqdm
 
@@ -179,7 +180,7 @@ def append_redunt_name(filename):
                         filename = filename + "%d" % count
                         if os.path.exists("%s.png" % filename) == False:
                                 break
-        return filename + ".png" 
+        return filename
 
 def get_table_file(patient_id):
         table_infos = [ i for i in glob.iglob("Information/Tooth_info/*.json")]
@@ -203,19 +204,15 @@ def padding(image, padding_height = 700, padding_width = 400):
         result[yoff:yoff+tooth_h, xoff:xoff+tooth_w] = image
         return result
 
-
-if __name__ == "__main__":
-        
+def generate_data(output_dir, padding_size, quarter_crop=False, near_right=True):
         jsons = [ i for i in glob.iglob("Label/*/*/*.json")]
         images = [ i.replace("json", "png") for i in jsons]
         
         mapping_dict = {}
         no_table, no_side = set(), set()
-        padding_size = (700, 700)
-        output_dir = "Dataset/Images_quarter_L"
         init_directory(output_dir)
 
-        for data, image in zip(jsons, images):
+        for data, image in tqdm(zip(jsons, images)):
                 tooth_img  = cv2.imread(image, 0)
                 tooth_data = json.load(open(data, "r"))["shapes"]
                 patient_id = image.split("\\")[1]
@@ -229,7 +226,7 @@ if __name__ == "__main__":
                 for tooth in tooth_data:
                         pd_pair  = get_PD_pair(pd_table, tooth["label"])
                         points   = np.array(tooth["points"]).astype(int)
-                        ro_tooth = auto_rotate_image(tooth_img, points, quarter=True ,near_right=False)
+                        ro_tooth = auto_rotate_image(tooth_img, points, quarter=quarter_crop ,near_right=near_right)
                         
                         tooth_h, tooth_w = ro_tooth.shape
                         if tooth_h > padding_size[0] or tooth_w > padding_size[1]:
@@ -240,12 +237,28 @@ if __name__ == "__main__":
                                 continue
 
                         ro_tooth = padding(ro_tooth, padding_size[0], padding_size[1])
-                        filename = '%s/%s_%s' % (output_dir, image.split("\\")[2], tooth["label"])                       
-                        filename = append_redunt_name(filename)
+                                            
+                        filename = datetime.utcnow().isoformat(sep='-', timespec='milliseconds').replace(".", "-").replace(":", "-")[-12:]
+                        number, side = tooth["label"].split("_")
+                        
+                        # left flip to right
+                        if near_right == False:
+                                ro_tooth = cv2.flip(ro_tooth, 1)
+                        
+                        if int(number) <= 16:
+                                ro_tooth = cv2.flip(ro_tooth, 0)
 
-                        ro_tooth = cv2.flip(ro_tooth, 1)
+                        if quarter_crop == True:
+                                value = pd_pair[1] if near_right == True else pd_pair[0]
+                                mapping_dict[filename] = value
+                                filename = '%s/%s_%s_%s_%d.png' % (output_dir, filename, image.split("\\")[2], number, value)
+
+                        else:
+                                mapping_dict[filename] = pd_pair
+                                filename = '%s/%s_%s_%s.png' % (output_dir, filename, image.split("\\")[2], tooth["label"])   
+                        
                         cv2.imwrite(filename, ro_tooth)
-                        mapping_dict[filename] = pd_pair[0]
+                        
                         
                             
         json.dump(mapping_dict, open("%s/mapping.json" % output_dir, 'w'), indent=4)
@@ -259,3 +272,34 @@ if __name__ == "__main__":
                 no_side = list(no_side)
                 no_side = "\n".join(no_side)
                 f.write(no_side)
+
+
+if __name__ == "__main__":
+
+        settings = [
+                {
+                        "output_dir"  : "Dataset/Tests/Images_quarter_R",
+                        "padding_size": (700, 400),
+                        "quarter_crop":True,
+                        "near_right"  :True
+                },
+
+                {
+                        "output_dir"  : "Dataset/Tests/Images_quarter_L",
+                        "padding_size": (700, 400),
+                        "quarter_crop":True,
+                        "near_right"  :False
+                },
+
+                {
+                        "output_dir"  : "Dataset/Tests/Images_normal",
+                        "padding_size": (700, 400),
+                        "quarter_crop":False,
+                        "near_right"  :False
+                }
+        ]
+        
+        
+        for setting in settings:
+                generate_data(**setting)
+
