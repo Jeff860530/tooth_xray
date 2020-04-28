@@ -250,12 +250,12 @@ def generate_data(output_dir, padding_size, quarter_crop=False, near_right=True)
 
                         if quarter_crop == True:
                                 value = pd_pair[1] if near_right == True else pd_pair[0]
-                                mapping_dict[filename] = value
                                 filename = '%s/%s_%s_%s_%d.png' % (output_dir, filename, image.split("\\")[2], number, value)
+                                mapping_dict[filename] = value
 
                         else:
-                                mapping_dict[filename] = pd_pair
                                 filename = '%s/%s_%s_%s.png' % (output_dir, filename, image.split("\\")[2], tooth["label"])   
+                                mapping_dict[filename] = pd_pair
                         
                         cv2.imwrite(filename, ro_tooth)
                         
