@@ -9,3 +9,4 @@
 |🌖|Table_Recognization  | Recognization for table data |
 |🌖|Generate_Dateset  |  Generate complete dataset by using labeled data|
 |🌖|statistic_pixel |  statistic the most common cell size for padding|
+|🌖|Image_Segmentation |  image segmentation by kmeans |
