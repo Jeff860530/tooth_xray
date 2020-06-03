@@ -1,1 +1,13 @@
 model/all_tooth_data_set
+model/data.csv
+model/700_400
+model/700_400.zip
+model/700_700
+model/700_700.zip
+model/700_400_Flip_No_Crop
+model/700_400_Flip_No_Crop.zip
+model/heatmap_result
+model/Send-Archive.zip
+model/dataset
+model/tf_explain
+model/logs
